@@ -821,3 +821,72 @@ class HumanML3D(data.Dataset):
 class KIT(HumanML3D):
     def __init__(self, mode, datapath='./dataset/kit_opt.txt', split="train", **kwargs):
         super(KIT, self).__init__(mode, datapath, split, **kwargs)
+
+class SingleHumanML3D(HumanML3D):
+    '''
+    A wrapper class for single input HumanML3D with a few properties 
+    1. no fixed length for motion
+    '''
+    def __init__(self, single_motion_tensor, text_condition, split="test", **kwargs):
+        # the super() will give us self.t2m_dataset which is the original HumanML3D dataset, but we won't use it
+        super(SingleHumanML3D, self).__init__(mode='train',
+                                              datapath=kwargs.get('datapath', './dataset/humanml_opt.txt'),
+                                              split=split,
+                                              **kwargs)
+        if isinstance(single_motion_tensor, np.ndarray): # convert to tensor if necessary.
+            self.single_motion_tensor = torch.from_numpy(single_motion_tensor).float()
+        else:
+            self.single_motion_tensor = single_motion_tensor.float()
+        self.single_motion_length = self.single_motion_tensor.shape[0]
+        self.text_condition = text_condition
+        word_list, pos_list = self.process_text(self.text_condition)
+        self.tokens = ['%s/%s'%(word_list[i], pos_list[i]) for i in range(len(word_list))]
+        
+    def process_text(self, sentence): # copied from RawTextDataset
+        sentence = sentence.replace('-', '')
+        nlp = spacy.load('en_core_web_sm')
+        doc = nlp(sentence)
+        word_list = []
+        pos_list = []
+        for token in doc:
+            word = token.text
+            if not word.isalpha():
+                continue
+            if (token.pos_ == 'NOUN' or token.pos_ == 'VERB') and (word != 'left'):
+                word_list.append(token.lemma_)
+            else:
+                word_list.append(word)
+            pos_list.append(token.pos_)
+        return word_list, pos_list
+
+    def __len__(self):
+        return 1
+
+    def __getitem__(self, item):
+        tokens = self.tokens
+        if len(tokens) < self.opt.max_text_len:
+            # Pad with "unk" tokens.
+            tokens = ['sos/OTHER'] + tokens + ['eos/OTHER']
+            sent_len = len(tokens)
+            tokens = tokens + ['unk/OTHER'] * (self.opt.max_text_len + 2 - sent_len)
+        else:
+            # Crop tokens and add boundary tokens.
+            tokens = tokens[:self.opt.max_text_len]
+            tokens = ['sos/OTHER'] + tokens + ['eos/OTHER']
+            sent_len = len(tokens)
+        
+        # Build positional one-hot and word embedding representations using the word vectorizer.
+        pos_one_hots = []
+        word_embeddings = []
+        for token in tokens:
+            # self.w_vectorizer[token] should return a tuple: (word_embedding, pos_one_hot)
+            word_emb, pos_oh = self.w_vectorizer[token]
+            pos_one_hots.append(pos_oh[None, :])
+            word_embeddings.append(word_emb[None, :])
+        pos_one_hots = np.concatenate(pos_one_hots, axis=0)
+        word_embeddings = np.concatenate(word_embeddings, axis=0)
+        
+        # Process the motion:
+        motion = self.single_motion_tensor
+        length = self.single_motion_length
+        return word_embeddings, pos_one_hots, self.text_condition, sent_len, motion, length, '_'.join(tokens)

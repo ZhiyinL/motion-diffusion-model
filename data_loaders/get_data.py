@@ -57,3 +57,15 @@ def get_dataset_loader(name, batch_size, num_frames, split='train', hml_mode='tr
     )
 
     return loader
+
+def get_single_input_loader(motion_tensor, text_condition):
+    from data_loaders.humanml.data.dataset import SingleHumanML3D
+    dataset = SingleHumanML3D(motion_tensor, text_condition)
+    loader = DataLoader(
+        dataset,
+        batch_size=1,
+        shuffle=False,
+        num_workers=0,  # For a single sample, workers aren't necessary.
+        collate_fn=lambda x: t2m_collate(x, 1)
+    )
+    return loader
