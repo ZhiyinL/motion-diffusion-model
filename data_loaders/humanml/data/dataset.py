@@ -886,7 +886,9 @@ class SingleHumanML3D(HumanML3D):
         pos_one_hots = np.concatenate(pos_one_hots, axis=0)
         word_embeddings = np.concatenate(word_embeddings, axis=0)
         
-        # Process the motion:
+        # Process the motion
         motion = self.single_motion_tensor
+        "Z Normalization"
+        motion = (motion - self.mean) / self.std
         length = self.single_motion_length
         return word_embeddings, pos_one_hots, self.text_condition, sent_len, motion, length, '_'.join(tokens)
