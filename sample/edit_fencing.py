@@ -26,10 +26,14 @@ def main():
     extra_parser.add_argument('--input_motion_path', type=str,
                               default='/home/zhiyin/tml-fencing/feat_mdm.npy',
                               help="Path to the input motion numpy file.")
+    extra_parser.add_argument('--mask_path', type=str, 
+                              default='/home/zhiyin/tml-fencing/mask_mdm.npy',
+                              help="Path to a .npy mask file (boolean) matching the input motion length.")
     extra_args, remaining_argv = extra_parser.parse_known_args()
     sys.argv = [sys.argv[0]] + remaining_argv
     args = edit_args()
     args.input_motion_path = extra_args.input_motion_path
+    args.mask_path = extra_args.mask_path
     fixseed(args.seed)
     out_path = args.output_dir
     name = os.path.basename(os.path.dirname(args.model_path))
@@ -40,6 +44,10 @@ def main():
     if out_path == '':
         out_path = os.path.join(os.path.dirname(args.model_path),
                                 'edit_{}_{}_{}_seed{}'.format(name, niter, args.edit_mode, args.seed))
+        if args.text_condition != '':
+            out_path += '_' + args.text_condition.replace(' ', '_').replace('.', '')
+    else:
+        out_path = os.path.join(out_path, 'edit_{}_{}_{}_seed{}'.format(name, niter, args.edit_mode, args.seed))
         if args.text_condition != '':
             out_path += '_' + args.text_condition.replace(' ', '_').replace('.', '')
 
@@ -78,6 +86,7 @@ def main():
     # add inpainting mask according to args
     max_frames = input_motions.shape[-1]
     print(f"Input motions with frames: {max_frames}")
+
     gt_frames_per_sample = {}
     model_kwargs['y']['inpainted_motion'] = input_motions
     if args.edit_mode == 'in_between':
@@ -93,6 +102,16 @@ def main():
                                                             device=input_motions.device)  # True is lower body data
         model_kwargs['y']['inpainting_mask'] = model_kwargs['y']['inpainting_mask'].unsqueeze(0).unsqueeze(
             -1).unsqueeze(-1).repeat(input_motions.shape[0], 1, input_motions.shape[2], input_motions.shape[3])
+    
+    # Load the mask if provided
+    if args.mask_path:
+        mask_np = np.load(args.mask_path)
+        assert mask_np.shape == (max_frames,), \
+            f"Mask shape {mask_np.shape} != input frames {(max_frames, )}"
+        mask_t = torch.tensor(mask_np, dtype=torch.bool, device=input_motions.device)
+        for i, length in enumerate(model_kwargs['y']['lengths'].cpu().numpy()): # assume same mask for all samples
+            model_kwargs['y']['inpainting_mask'][i, :, :, :] = mask_t
+            gt_frames_per_sample[i] = mask_np.nonzero()[0].tolist()
 
     all_motions = []
     all_lengths = []
