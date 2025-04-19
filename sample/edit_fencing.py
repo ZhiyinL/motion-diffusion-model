@@ -216,7 +216,7 @@ def main():
             print(f'[({sample_i}) "{caption}" | Rep #{rep_i} | -> {save_file}]')
             animations[sample_i, rep_i] = plot_3d_motion(animation_save_path, 
                                                          skeleton, motion, dataset=args.dataset, title=caption, 
-                                                         fps=fps, gt_frames=gt_frames)
+                                                         fps=fps, gt_frames=gt_frames, global_coords=False)
             # Credit for visualization: https://github.com/EricGuo5513/text-to-motion
 
         all_rep_save_file = os.path.join(out_path, 'sample{:02d}.mp4'.format(sample_i))

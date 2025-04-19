@@ -24,9 +24,10 @@ def list_cut_average(ll, intervals):
         ll_new.append(np.mean(ll[l_low:l_high]))
     return ll_new
 
-
 def plot_3d_motion(save_path, kinematic_tree, joints, title, dataset, figsize=(3, 3), fps=120, radius=3,
-                   vis_mode='default', gt_frames=[]):
+                   vis_mode='default', gt_frames=[], 
+                   global_coords=False,   # <‑‑ new flag
+                   ):
     matplotlib.use('Agg')
 
     title_per_frame = type(title) == list
@@ -71,7 +72,7 @@ def plot_3d_motion(save_path, kinematic_tree, joints, title, dataset, figsize=(3
 
     fig = plt.figure(figsize=figsize)
     plt.tight_layout()
-    ax = p3.Axes3D(fig)
+    ax = fig.add_subplot(111, projection='3d')
     init()
     MINS = data.min(axis=0).min(axis=0)
     MAXS = data.max(axis=0).max(axis=0)
@@ -89,11 +90,14 @@ def plot_3d_motion(save_path, kinematic_tree, joints, title, dataset, figsize=(3
 
     height_offset = MINS[1]
     data[:, :, 1] -= height_offset
-    trajec = data[:, 0, [0, 2]]  # memorize original x,z pelvis values
 
     # locate x,z pelvis values of ** each frame ** at zero
-    data[..., 0] -= data[:, 0:1, 0] 
-    data[..., 2] -= data[:, 0:1, 2]
+    if not global_coords:
+        trajec = data[:, 0, [0, 2]]  # memorize original x,z pelvis values
+        data[..., 0] -= data[:, 0:1, 0]
+        data[..., 2] -= data[:, 0:1, 2]
+    else:
+        trajec = np.zeros_like(data[:, 0, [0, 2]])  # all zeros – values are dummy
 
     #     print(trajec.shape)
 
@@ -112,8 +116,15 @@ def plot_3d_motion(save_path, kinematic_tree, joints, title, dataset, figsize=(3
         _title += f' [{index}]'
         fig.suptitle(_title, fontsize=10)
 
-        plot_xzPlane(MINS[0] - trajec[index, 0], MAXS[0] - trajec[index, 0], 0, MINS[2] - trajec[index, 1],
-                     MAXS[2] - trajec[index, 1])
+        if global_coords:
+            plot_xzPlane(MINS[0], MAXS[0], 
+                         0, 
+                         MINS[2], MAXS[2])
+        else:
+            plot_xzPlane(MINS[0] - trajec[index, 0], MAXS[0] - trajec[index, 0],
+                         0,
+                         MINS[2] - trajec[index, 1], MAXS[2] - trajec[index, 1])
+        
 
         used_colors = colors_blue if index in gt_frames else colors
         for i, (chain, color) in enumerate(zip(kinematic_tree, used_colors)):
@@ -121,7 +132,7 @@ def plot_3d_motion(save_path, kinematic_tree, joints, title, dataset, figsize=(3
                 linewidth = 4.0
             else:
                 linewidth = 2.0
-            ax.plot3D(data[index, chain, 0], data[index, chain, 1], data[index, chain, 2], linewidth=linewidth,
+            ax.plot(data[index, chain, 0], data[index, chain, 1], data[index, chain, 2], linewidth=linewidth,
                       color=color)
         #         print(trajec[:index, 0].shape)
 
@@ -142,7 +153,8 @@ def plot_3d_motion(save_path, kinematic_tree, joints, title, dataset, figsize=(3
 
         return mplfig_to_npimage(fig)
 
-    ani = VideoClip(update)
+    
+    ani = VideoClip(update, duration=n_frames/fps)
     
     plt.close()
     return ani
